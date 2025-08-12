@@ -1,0 +1,162 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 30 100% 50%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 30 100% 50%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 30 100% 50%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 30 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Estilos personalizados para el tema del café */
+@layer components {
+  .coffee-gradient {
+    background: linear-gradient(135deg, 
+      theme('colors.coffee.900'), 
+      theme('colors.coffee.700'), 
+      theme('colors.coffee.500')
+    );
+  }
+  
+  .roasting-animation {
+    animation: roasting 2s ease-in-out infinite;
+  }
+  
+  @keyframes roasting {
+    0%, 100% { transform: scale(1) rotate(0deg); }
+    50% { transform: scale(1.05) rotate(2deg); }
+  }
+  
+  .steam-effect {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .steam-effect::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(ellipse at center, 
+      transparent 30%, 
+      rgba(255, 255, 255, 0.1) 70%
+    );
+    animation: steam 3s ease-in-out infinite;
+  }
+  
+  @keyframes steam {
+    0%, 100% { transform: translateY(0) scale(1); opacity: 0; }
+    50% { transform: translateY(-20px) scale(1.1); opacity: 1; }
+  }
+  
+  /* Efectos para gráficos de tostión */
+  .roasting-curve {
+    filter: drop-shadow(0 4px 6px rgb(0 0 0 / 0.1));
+  }
+  
+  /* Animaciones para el inventario */
+  .inventory-pulse {
+    animation: inventory-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  @keyframes inventory-pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: .8;
+    }
+  }
+  
+  /* Estilos para alertas críticas */
+  .alert-critical {
+    animation: alert-blink 1s ease-in-out infinite;
+  }
+  
+  @keyframes alert-blink {
+    0%, 100% { border-color: theme('colors.red.500'); }
+    50% { border-color: theme('colors.red.300'); }
+  }
+}
+
+/* Mejoras de accesibilidad */
+@media (prefers-reduced-motion: reduce) {
+  .roasting-animation,
+  .steam-effect::before,
+  .inventory-pulse,
+  .alert-critical {
+    animation: none;
+  }
+}
+
+/* Estilos para impresión */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-break {
+    page-break-before: always;
+  }
+  
+  body {
+    @apply text-black bg-white;
+  }
+  
+  .coffee-gradient {
+    background: none;
+    @apply bg-gray-100;
+  }
+}
