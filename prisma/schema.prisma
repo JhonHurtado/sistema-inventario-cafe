@@ -1,0 +1,679 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// AUTENTICACIÓN Y USUARIOS
+// =============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(USER)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relaciones con procesos
+  comprasRealizadas     Compra[]          @relation("CompradorUser")
+  procesosTrilla        ProcesoTrilla[]   @relation("OperadorTrilla")
+  procesosTostion       ProcesoTostion[]  @relation("OperadorTostion")
+  procesosEmpacado      ProcesoEmpacado[] @relation("OperadorEmpacado")
+  movimientosInventario MovimientoInventario[]
+
+  accounts Account[]
+  sessions Session[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  OPERATOR
+  USER
+}
+
+// =============================================================================
+// GESTIÓN DE PROVEEDORES
+// =============================================================================
+
+model Proveedor {
+  id                String   @id @default(cuid())
+  nombre            String
+  contacto          String?
+  telefono          String?
+  email             String?
+  direccion         String?
+  tipoProveedor     String // Cooperativa, Finca, Comercializador
+  certificaciones   String? // JSON array de certificaciones
+  calificacion      Float? // 1-10
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relaciones
+  compras Compra[]
+
+  @@map("proveedores")
+}
+
+// =============================================================================
+// MÓDULO DE COMPRAS
+// =============================================================================
+
+model Compra {
+  id                  String   @id @default(cuid())
+  numeroFactura       String   @unique
+  proveedorId         String
+  compradorId         String
+  fechaCompra         DateTime
+  fechaVencimiento    DateTime?
+  
+  // Información del café
+  tipoCafe            String // Arábica, Robusta, etc.
+  variedad            String // Caturra, Castillo, etc.
+  origen              String // Región/municipio
+  procesosBeneficio   String // Lavado, Natural, Honey
+  
+  // Cantidades y precios
+  cantidadKg          Float
+  precioKg            Float
+  precioTotal         Float
+  numeroSacos         Int?
+  
+  // Control de calidad
+  humedad             Float? // Porcentaje
+  calidad             Int? // 1-10
+  defectos            String? // Descripción de defectos
+  
+  // Certificaciones
+  esOrganico          Boolean  @default(false)
+  esFairTrade         Boolean  @default(false)
+  certificaciones     String? // JSON de otras certificaciones
+  
+  // Documentación
+  documentos          String? // JSON array de URLs/paths
+  observaciones       String?
+  
+  // Metadatos
+  codigoLote          String   @unique // Código único de trazabilidad
+  estado              EstadoCompra @default(PENDIENTE)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relaciones
+  proveedor           Proveedor @relation(fields: [proveedorId], references: [id])
+  comprador           User      @relation("CompradorUser", fields: [compradorId], references: [id])
+  
+  // Procesos derivados
+  loteCafeVerde       LoteCafeVerde[]
+  movimientosInventario MovimientoInventario[]
+
+  @@map("compras")
+}
+
+enum EstadoCompra {
+  PENDIENTE
+  RECIBIDA
+  CONTROLADA
+  RECHAZADA
+}
+
+// =============================================================================
+// INVENTARIO DE CAFÉ VERDE
+// =============================================================================
+
+model LoteCafeVerde {
+  id              String   @id @default(cuid())
+  compraId        String
+  codigoLote      String   @unique
+  cantidadKg      Float
+  cantidadDisponible Float // Se reduce con cada proceso de trilla
+  ubicacionAlmacen String?
+  
+  // Copiar datos importantes de la compra para referencia rápida
+  tipoCafe        String
+  variedad        String
+  origen          String
+  humedad         Float?
+  calidad         Int?
+  
+  fechaIngreso    DateTime
+  fechaVencimiento DateTime?
+  estado          EstadoLote @default(DISPONIBLE)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relaciones
+  compra          Compra @relation(fields: [compraId], references: [id])
+  procesosTrilla  ProcesoTrilla[]
+  movimientosInventario MovimientoInventario[]
+
+  @@map("lotes_cafe_verde")
+}
+
+enum EstadoLote {
+  DISPONIBLE
+  EN_PROCESO
+  AGOTADO
+  VENCIDO
+}
+
+// =============================================================================
+// MÓDULO DE TRILLA
+// =============================================================================
+
+model ProcesoTrilla {
+  id                    String   @id @default(cuid())
+  loteVerdeId           String
+  operadorId            String
+  fechaProceso          DateTime
+  
+  // Cantidades
+  cantidadInicialKg     Float
+  cantidadPergaminoKg   Float
+  cantidadPrimeraKg     Float
+  cantidadSegundaKg     Float
+  cantidadMermaKg       Float
+  
+  // Rendimientos calculados
+  rendimientoPergamino  Float // Porcentaje
+  rendimientoPrimera    Float
+  rendimientoSegunda    Float
+  porcentajeMerma       Float
+  
+  // Control de calidad
+  humedadDespues        Float?
+  observaciones         String?
+  
+  // Metadatos
+  codigoLotePergamino   String @unique
+  estado                EstadoProceso @default(EN_PROGRESO)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relaciones
+  loteVerde             LoteCafeVerde @relation(fields: [loteVerdeId], references: [id])
+  operador              User @relation("OperadorTrilla", fields: [operadorId], references: [id])
+  lotesPergamino        LoteCafePergamino[]
+  movimientosInventario MovimientoInventario[]
+
+  @@map("procesos_trilla")
+}
+
+enum EstadoProceso {
+  EN_PROGRESO
+  COMPLETADO
+  CANCELADO
+}
+
+// =============================================================================
+// INVENTARIO DE CAFÉ PERGAMINO
+// =============================================================================
+
+model LoteCafePergamino {
+  id                  String   @id @default(cuid())
+  procesoTrillaId     String
+  codigoLote          String   @unique
+  clasificacion       ClasificacionCafe // PRIMERA, SEGUNDA, PERGAMINO
+  cantidadKg          Float
+  cantidadDisponible  Float
+  ubicacionAlmacen    String?
+  
+  // Datos heredados para trazabilidad
+  origenTrilla        String // Referencia al lote verde original
+  tipoCafe            String
+  variedad            String
+  origen              String
+  humedad             Float?
+  calidad             Int?
+  
+  fechaProceso        DateTime
+  fechaVencimiento    DateTime?
+  estado              EstadoLote @default(DISPONIBLE)
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relaciones
+  procesoTrilla       ProcesoTrilla @relation(fields: [procesoTrillaId], references: [id])
+  procesosTostion     ProcesoTostion[]
+  movimientosInventario MovimientoInventario[]
+
+  @@map("lotes_cafe_pergamino")
+}
+
+enum ClasificacionCafe {
+  PERGAMINO
+  PRIMERA
+  SEGUNDA
+}
+
+// =============================================================================
+// MÓDULO DE TOSTIÓN
+// =============================================================================
+
+model PerfilTostion {
+  id                    String   @id @default(cuid())
+  nombre                String   @unique
+  descripcion           String?
+  
+  // Configuración inicial
+  temperaturaInicial    Float
+  temperaturaObjetivo   Float
+  tiempoEstimado        Int // minutos
+  flujoAireInicial      Int // porcentaje 0-100
+  nivelTostion          NivelTostion
+  
+  // Configuración de eventos esperados
+  firstCrackInicioEsperado    Int? // minuto esperado
+  firstCrackFinalEsperado     Int?
+  secondCrackInicioEsperado   Int?
+  secondCrackFinalEsperado    Int?
+  
+  // Metadatos
+  esFavorito            Boolean  @default(false)
+  vecesUtilizado        Int      @default(0)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relaciones
+  procesosTostion       ProcesoTostion[]
+
+  @@map("perfiles_tostion")
+}
+
+model ProcesoTostion {
+  id                    String   @id @default(cuid())
+  lotePergaminoId       String
+  operadorId            String
+  perfilToscionId       String?
+  fechaProceso          DateTime
+  
+  // Configuración del proceso
+  cantidadInicialKg     Float
+  temperaturaInicial    Float
+  temperaturaObjetivo   Float
+  tiempoEstimado        Int
+  flujoAireInicial      Int
+  nivelToscionObjetivo  NivelTostion
+  
+  // Resultados del proceso
+  tiempoTotalMinutos    Int?
+  temperaturaFinal      Float?
+  nivelToscionAlcanzado NivelTostion?
+  pesoFinalKg           Float?
+  porcentajeMerma       Float?
+  
+  // Control de calidad
+  colorTostion          String?
+  aromaPuntuacion       Int? // 1-10
+  cuerpoBalanceado      Boolean?
+  acidezNivel           Int? // 1-10
+  observacionesCalidad  String?
+  
+  // Metadatos
+  codigoLoteTostado     String @unique
+  estado                EstadoProceso @default(EN_PROGRESO)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relaciones
+  lotePergamino         LoteCafePergamino @relation(fields: [lotePergaminoId], references: [id])
+  operador              User @relation("OperadorTostion", fields: [operadorId], references: [id])
+  perfilTostion         PerfilTostion? @relation(fields: [perfilToscionId], references: [id])
+  
+  // Datos de la curva de tostión
+  datosTostion          DatoTostion[]
+  eventosTostion        EventoTostion[]
+  ajustesTostion        AjusteTostion[]
+  
+  // Productos resultantes
+  lotesTostados         LoteCafeTostado[]
+  movimientosInventario MovimientoInventario[]
+
+  @@map("procesos_tostion")
+}
+
+model DatoTostion {
+  id                String   @id @default(cuid())
+  procesoToscionId  String
+  minuto            Int
+  segundo           Int      @default(0)
+  temperatura       Float
+  ror               Float? // Rate of Rise - calculado automáticamente
+  flujoAire         Int
+  nivelGas          Int
+  createdAt         DateTime @default(now())
+
+  // Relaciones
+  procesoTostion    ProcesoTostion @relation(fields: [procesoToscionId], references: [id], onDelete: Cascade)
+
+  @@unique([procesoToscionId, minuto, segundo])
+  @@map("datos_tostion")
+}
+
+model EventoTostion {
+  id                String   @id @default(cuid())
+  procesoToscionId  String
+  tipoEvento        TipoEventoTostion
+  minuto            Int
+  segundo           Int      @default(0)
+  temperatura       Float?
+  observaciones     String?
+  createdAt         DateTime @default(now())
+
+  // Relaciones
+  procesoTostion    ProcesoTostion @relation(fields: [procesoToscionId], references: [id], onDelete: Cascade)
+
+  @@map("eventos_tostion")
+}
+
+model AjusteTostion {
+  id                String   @id @default(cuid())
+  procesoToscionId  String
+  minuto            Int
+  segundo           Int      @default(0)
+  tipoAjuste        TipoAjusteTostion
+  valorAnterior     Int
+  valorNuevo        Int
+  observaciones     String?
+  createdAt         DateTime @default(now())
+
+  // Relaciones
+  procesoTostion    ProcesoTostion @relation(fields: [procesoToscionId], references: [id], onDelete: Cascade)
+
+  @@map("ajustes_tostion")
+}
+
+enum NivelTostion {
+  LIGHT
+  MEDIUM_LIGHT
+  MEDIUM
+  MEDIUM_DARK
+  DARK
+}
+
+enum TipoEventoTostion {
+  FIRST_CRACK_INICIO
+  FIRST_CRACK_FINAL
+  SECOND_CRACK_INICIO
+  SECOND_CRACK_FINAL
+  INICIO_ENFRIAMIENTO
+  DESCARGA
+}
+
+enum TipoAjusteTostion {
+  FLUJO_AIRE
+  NIVEL_GAS
+  TEMPERATURA
+}
+
+// =============================================================================
+// INVENTARIO DE CAFÉ TOSTADO
+// =============================================================================
+
+model LoteCafeTostado {
+  id                    String   @id @default(cuid())
+  procesoToscionId      String
+  codigoLote            String   @unique
+  cantidadKg            Float
+  cantidadDisponible    Float
+  ubicacionAlmacen      String?
+  
+  // Datos del tostado
+  nivelTostion          NivelTostion
+  fechaTostado          DateTime
+  fechaVencimiento      DateTime
+  perfilSabor           String? // JSON con notas de sabor
+  
+  // Datos heredados para trazabilidad
+  origenCompleto        String // Toda la cadena de trazabilidad
+  tipoCafe              String
+  variedad              String
+  origen                String
+  
+  estado                EstadoLote @default(DISPONIBLE)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relaciones
+  procesoTostion        ProcesoTostion @relation(fields: [procesoToscionId], references: [id])
+  procesosEmpacado      ProcesoEmpacado[]
+  movimientosInventario MovimientoInventario[]
+
+  @@map("lotes_cafe_tostado")
+}
+
+// =============================================================================
+// MÓDULO DE EMPACADO
+// =============================================================================
+
+model ProcesoEmpacado {
+  id                    String   @id @default(cuid())
+  loteTostadoId         String
+  operadorId            String
+  fechaEmpacado         DateTime
+  
+  // Configuración del empacado
+  tipoEmpaque           TipoEmpaque
+  pesoPorUnidad         Float // en gramos
+  cantidadUnidades      Int
+  cantidadTotalKg       Float
+  
+  // Información de etiquetado
+  nombreProducto        String
+  informacionEtiqueta   String? // JSON con toda la info de la etiqueta
+  codigoBarras          String?
+  fechaVencimiento      DateTime
+  
+  // Metadatos
+  codigoLoteEmpacado    String @unique
+  estado                EstadoProceso @default(EN_PROGRESO)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relaciones
+  loteTostado           LoteCafeTostado @relation(fields: [loteTostadoId], references: [id])
+  operador              User @relation("OperadorEmpacado", fields: [operadorId], references: [id])
+  productosTerminados   ProductoTerminado[]
+  movimientosInventario MovimientoInventario[]
+
+  @@map("procesos_empacado")
+}
+
+enum TipoEmpaque {
+  BOLSA_VALVE
+  BOLSA_SIMPLE
+  FRASCO_VIDRIO
+  LATA
+  OTRO
+}
+
+// =============================================================================
+// INVENTARIO DE PRODUCTOS TERMINADOS
+// =============================================================================
+
+model ProductoTerminado {
+  id                    String   @id @default(cuid())
+  procesoEmpacadoId     String
+  codigoProducto        String   @unique
+  codigoBarras          String?
+  
+  // Información del producto
+  nombreProducto        String
+  tipoEmpaque           TipoEmpaque
+  pesoPorUnidad         Float
+  cantidadUnidades      Int
+  cantidadDisponible    Int
+  
+  // Información comercial
+  precioVenta           Float?
+  costoProduccion       Float?
+  margen                Float?
+  
+  // Fechas importantes
+  fechaProduccion       DateTime
+  fechaVencimiento      DateTime
+  
+  // Ubicación y estado
+  ubicacionAlmacen      String?
+  estado                EstadoProducto @default(DISPONIBLE)
+  
+  // Trazabilidad completa
+  trazabilidadCompleta  String // JSON con toda la cadena
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relaciones
+  procesoEmpacado       ProcesoEmpacado @relation(fields: [procesoEmpacadoId], references: [id])
+  movimientosInventario MovimientoInventario[]
+
+  @@map("productos_terminados")
+}
+
+enum EstadoProducto {
+  DISPONIBLE
+  RESERVADO
+  VENDIDO
+  VENCIDO
+  DAÑADO
+}
+
+// =============================================================================
+// SISTEMA DE MOVIMIENTOS DE INVENTARIO
+// =============================================================================
+
+model MovimientoInventario {
+  id                    String   @id @default(cuid())
+  usuarioId             String
+  tipoMovimiento        TipoMovimiento
+  tipoInventario        TipoInventario
+  
+  // Referencias polimórficas (solo una debe estar llena)
+  compraId              String?
+  loteVerdeId           String?
+  procesoTrillaId       String?
+  lotePergaminoId       String?
+  procesoToscionId      String?
+  loteTostadoId         String?
+  procesoEmpacadoId     String?
+  productoTerminadoId   String?
+  
+  // Datos del movimiento
+  cantidadAnterior      Float
+  cantidadMovimiento    Float
+  cantidadNueva         Float
+  motivo                String
+  observaciones         String?
+  
+  fechaMovimiento       DateTime @default(now())
+  createdAt             DateTime @default(now())
+
+  // Relaciones
+  usuario               User @relation(fields: [usuarioId], references: [id])
+  compra                Compra? @relation(fields: [compraId], references: [id])
+  loteVerde             LoteCafeVerde? @relation(fields: [loteVerdeId], references: [id])
+  procesoTrilla         ProcesoTrilla? @relation(fields: [procesoTrillaId], references: [id])
+  lotePergamino         LoteCafePergamino? @relation(fields: [lotePergaminoId], references: [id])
+  procesoTostion        ProcesoTostion? @relation(fields: [procesoToscionId], references: [id])
+  loteTostado           LoteCafeTostado? @relation(fields: [loteTostadoId], references: [id])
+  procesoEmpacado       ProcesoEmpacado? @relation(fields: [procesoEmpacadoId], references: [id])
+  productoTerminado     ProductoTerminado? @relation(fields: [productoTerminadoId], references: [id])
+
+  @@map("movimientos_inventario")
+}
+
+enum TipoMovimiento {
+  ENTRADA
+  SALIDA
+  AJUSTE
+  TRANSFERENCIA
+  PROCESO
+}
+
+enum TipoInventario {
+  CAFE_VERDE
+  CAFE_PERGAMINO
+  CAFE_TOSTADO
+  PRODUCTO_TERMINADO
+}
+
+// =============================================================================
+// CONFIGURACIONES DEL SISTEMA
+// =============================================================================
+
+model Configuracion {
+  id            String   @id @default(cuid())
+  clave         String   @unique
+  valor         String
+  descripcion   String?
+  tipo          TipoConfiguracion @default(STRING)
+  categoria     String   @default("GENERAL")
+  esEditable    Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("configuraciones")
+}
+
+enum TipoConfiguracion {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
